@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from sqlalchemy import create_engine, Column, Integer, String, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -43,7 +43,8 @@ Session = sessionmaker(bind=engine)
 def join_player():
     """
     Добавление нового игрока в игру со случайными начальными координатами.
-    :return: JSON-ответ об успешном выполнении
+
+    :return: JSON-ответ об успешном добавлении игрока.
     """
 
     data = request.json
@@ -61,7 +62,7 @@ def join_player():
     session.commit()
     session.close()
 
-    return jsonify({"status": "ok"})
+    return jsonify({"status": "player_added"})
 
 
 @app.route("/move", methods=["POST"])
@@ -70,6 +71,8 @@ def move_player():
     Обработка перемещения игрока на игровом поле.
     Принимает POST-запрос с JSON-данными, содержащими имя пользователя и направление движения.
     Обновляет координаты игрока в БД с проверкой границ игрового поля.
+
+    :return: Данные JSON о перемещении игрока.
     """
 
     data = request.json
@@ -98,7 +101,8 @@ def move_player():
 def get_players_status():
     """
     Получения текущих статусов всех игроков: имя, позиции (x, y), кол-во монет.
-    :return: Данные в JSON о состоянии всех игроков
+
+    :return: Данные в JSON о статусе всех игроков.
     """
 
     session = Session()
@@ -123,7 +127,8 @@ def collect_coin():
     """
     Обработка сбора монет.
     Увеличивает счетчик монет игрока на 1.
-    :return:
+
+    :return: Данные в JSON со статусом "собрано".
     """
 
     data = request.json
@@ -140,3 +145,25 @@ def collect_coin():
     return jsonify({"status": "collected"})
 
 
+@app.route("/leaderboard")
+def leaderboard():
+    """
+    Таблица лидеров, отсортированная по кол-ву монет.
+
+    :return: HTML-страница с переданными данными игроков.
+    """
+
+    session = Session()
+    players = session.query(Player).order_by(Player.coins.desc()).all()
+    data = [
+        {
+            "username": player.username,
+            "coins": player.coins,
+            "time": (datetime.datetime.now() - player.joined_at).total_seconds(),
+        }
+        for player in players
+    ]
+
+    session.close()
+
+    return render_template("leaderboard.html", players=data)
