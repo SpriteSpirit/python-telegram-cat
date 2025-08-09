@@ -167,3 +167,7 @@ def leaderboard():
     session.close()
 
     return render_template("leaderboard.html", players=data)
+
+
+if __name__ == "__main__":
+    app.run(port=5000, debug=True)
