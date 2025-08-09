@@ -94,7 +94,7 @@ def move_player():
     return jsonify({"status": "moved"})
 
 
-@app.route("/get_players_status", methods=["POST"])
+@app.route("/get_players_status", methods=["GET"])
 def get_players_status():
     """
     Получения текущих статусов всех игроков: имя, позиции (x, y), кол-во монет.
@@ -125,6 +125,7 @@ def collect_coin():
     Увеличивает счетчик монет игрока на 1.
     :return:
     """
+
     data = request.json
     username = data["username"]
     session = Session()
@@ -137,3 +138,5 @@ def collect_coin():
     session.close()
 
     return jsonify({"status": "collected"})
+
+
