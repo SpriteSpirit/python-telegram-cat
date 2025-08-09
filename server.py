@@ -92,3 +92,27 @@ def move_player():
     session.close()
 
     return jsonify({"status": "moved"})
+
+
+@app.route("/get_players_status", methods=["POST"])
+def get_players_status():
+    """
+    Получения текущих статусов всех игроков: имя, позиции (x, y), кол-во монет.
+    :return: Данные в JSON о состоянии всех игроков
+    """
+
+    session = Session()
+    players = session.query(Player).all()
+    data = [
+        {
+            "username": player.username,
+            "x": player.x,
+            "y": player.y,
+            "coins": player.coins,
+        }
+        for player in players
+    ]
+
+    session.close()
+
+    return jsonify(data)
