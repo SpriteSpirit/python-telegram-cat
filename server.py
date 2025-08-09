@@ -116,3 +116,24 @@ def get_players_status():
     session.close()
 
     return jsonify(data)
+
+
+@app.route("/collect_coin", methods=["POST"])
+def collect_coin():
+    """
+    Обработка сбора монет.
+    Увеличивает счетчик монет игрока на 1.
+    :return:
+    """
+    data = request.json
+    username = data["username"]
+    session = Session()
+    player = session.query(Player).filter_by(username=username).first()
+
+    if player:
+        player.coins += 1
+        session.commit()
+
+    session.close()
+
+    return jsonify({"status": "collected"})
