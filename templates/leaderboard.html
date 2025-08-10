@@ -2,9 +2,49 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Title</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Таблица лидеров</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
+<h1>🏆 Таблица лидеров 🏆</h1>
 
+<table class="leaderboard-table">
+    <thead>
+    <tr>
+        <th>Ранг</th>
+        <th>Никнейм</th>
+        <th>Монеты</th>
+        <th>Время игры</th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for p in players %}
+    <tr>
+        <td>
+            {% if loop.index == 1 %}
+            <span class="medal">🥇</span>
+            {% elif loop.index == 2 %}
+            <span class="medal">🥈</span>
+            {% elif loop.index == 3 %}
+            <span class="medal">🥉</span>
+            {% endif %}
+            {{ loop.index }}
+        </td>
+        <td>{{ p.username }}</td>
+        <td>{{ p.coins }}</td>
+        <td class="time-cell">
+            {% set hours = (p.time / 3600)|int %}
+            {% set minutes = ((p.time % 3600) / 60)|int %}
+            {{ "%02d:%02d"|format(hours, minutes) }}
+        </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+<div class="footer">
+<!--    <a href="/skills" class="dev-link">About the Developer</a>-->
+</div>
 </body>
 </html>
