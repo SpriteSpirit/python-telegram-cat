@@ -1,62 +1,158 @@
 import telebot
-import requests
 from dotenv import load_dotenv
 import os
+import requests
+
 
 load_dotenv()
+bot = telebot.TeleBot(os.getenv("TOKEN"))
+pending_moves = []
 
-TOKEN = os.environ.get("TOKEN")
-bot = telebot.TeleBot(TOKEN)
 
-# print(TOKEN)
-# print(bot.get_me())
+def get_keyboard_controller():
+    """
+    Создание клавиатуры управления.
+
+    :return: Объект ReplyKeyboardMarkup с кнопками управления.
+    """
+
+    markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.row("⬆️")
+    markup.row("⬅️", "➡️")
+    markup.row("⬇️")
+
+    return markup
+
+
+def safe_request_json(url, payload):
+    """
+    Выполняет POST-запрос и безопасно возвращает JSON или None.
+    Если ответ не JSON — вернёт None и сам текст ответа.
+    """
+
+    try:
+        res = requests.post(url, json=payload, timeout=2)
+
+        if res.status_code != 200:
+            return None, f"Сервер вернул код {res.status_code}: {res.text}"
+
+        if "application/json" not in res.headers.get("Content-Type", ""):
+            return None, f"Сервер вернул не JSON: {res.text}"
+
+        try:
+            return res.json(), None
+        except ValueError:
+            return None, f"Ошибка парсинга JSON: {res.text}"
+
+    except requests.RequestException as e:
+        return None, f"Ошибка подключения: {e}"
+
+
+def process_pending_moves():
+    """
+    Обработка ожидающих движений игрока.
+    Выполняет запрос к /move, отправляет уведомления в Telegram:
+    - об ошибке, если запрос неуспешен.
+    - об успешном перемещении или его отказе, в зависимости от ответа сервера.
+
+    :return: Если список pending_moves пуст, то вернет None
+    """
+
+    if not pending_moves:
+        return
+
+    move = pending_moves.pop(0)
+    data, error = safe_request_json("http://localhost:5000/move", move)
+
+    if error:
+        bot.send_message(
+            move["chat_id"],
+            f"Ошибка: {error}",
+            reply_markup=get_keyboard_controller(),
+        )
+        return
+
+    if data.get("status") == "moved":
+        bot.send_message(
+            move["chat_id"],
+            f"Ты переместился: {move['direction']}",
+            reply_markup=get_keyboard_controller(),
+        )
+    else:
+        bot.send_message(
+            move["chat_id"],
+            "Не удалось переместиться",
+            reply_markup=get_keyboard_controller(),
+        )
 
 
 @bot.message_handler(commands=["join"])
 def join_game(message):
     """
-    Обработка команды /join для регистрации игрока.
+    Регистрация нового игрока или активация существующего.
 
-    :param message: Сообщение с информацией о пользователе.
+    :param message: Объект сообщения от Telegram.
     """
 
     username = message.from_user.username or message.from_user.first_name
+    data, error = safe_request_json(
+        "http://localhost:5000/join", {"username": username}
+    )
 
-    try:
-        requests.post("http://localhost:5000/join", json={"username": username})
-        markup = telebot.types.ReplyKeyboardMarkup(True, False)
-        markup.add("⬅️", "➡️", "⬆️", "⬇️")
+    if error:
+        bot.send_message(message.chat.id, error)
+        return
+
+    status = data.get("status")
+    if status == "player_already_exists":
         bot.send_message(
-            message.chat.id, f"Привет, {username}! Ты в игре!", reply_markup=markup
+            message.chat.id,
+            f"Привет, {username}! Ты уже в игре!",
+            reply_markup=get_keyboard_controller(),
         )
-    except Exception as e:
-        bot.send_message(message.chat.id, f"Ошибка подключения к серверу: {e}")
+    else:
+        bot.send_message(
+            message.chat.id,
+            f"Привет, {username}! Добро пожаловать!",
+            reply_markup=get_keyboard_controller(),
+        )
 
 
-@bot.message_handler(func=lambda message: message.text in ["⬅️", "➡️", "⬆️", "⬇️"])
+@bot.message_handler(content_types=["text"])
 def move(message):
     """
-    Обработка нажатия кнопок управления для перемещения игрока.
+    Обработка команд движения и перемещение игрока.
 
-    :param message: Сообщение с информацией о нажатой кнопке.
+    :param message: Сообщение с выбранным направлением.
     """
 
     username = message.from_user.username or message.from_user.first_name
-    dirs = {"⬅️": "left", "➡️": "right", "⬆️": "up", "⬇️": "down"}
-    direction = dirs[message.text]
+    direction = {"⬅️": "left", "➡️": "right", "⬆️": "up", "⬇️": "down"}.get(message.text)
 
-    try:
-        requests.post(
-            "http://localhost:5000/move",
-            json={
-                "username": username,
-                "direction": direction,
-            },
-            timeout=3,
+    if direction:
+        data, error = safe_request_json(
+            "http://localhost:5000/move", {"username": username, "direction": direction}
         )
-        bot.send_message(message.chat.id, f"Перемещение: {message.text}")
-    except Exception as e:
-        bot.send_message(message.chat.id, f"Ошибка при перемещении: {e}")
+
+        if error:
+            bot.send_message(
+                message.chat.id, error, reply_markup=get_keyboard_controller()
+            )
+            return
+
+        if data.get("status") == "moved":
+            bot.send_message(
+                message.chat.id,
+                f"Ты переместился: {direction}",
+                reply_markup=get_keyboard_controller(),
+            )
+        else:
+            bot.send_message(
+                message.chat.id,
+                "Не удалось переместиться",
+                reply_markup=get_keyboard_controller(),
+            )
 
 
-bot.polling()
+print("Бот запущен...")
+bot.polling(non_stop=True, timeout=60, long_polling_timeout=30)

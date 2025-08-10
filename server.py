@@ -3,8 +3,9 @@ from sqlalchemy import create_engine, Column, Integer, String, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-import datetime
+from datetime import datetime
 from random import randint
+from sqlalchemy import func
 
 app = Flask(__name__)
 engine = create_engine("sqlite:///database.db")
@@ -27,12 +28,13 @@ class Player(Base):
     """
 
     __tablename__ = "players"
-    id = Column(Integer, primary_key=True)
+
+    coins = Column(Integer)
     username = Column(String)
+    joined_at = Column(DateTime)
     x = Column(Integer)
     y = Column(Integer)
-    coins = Column(Integer)
-    joined_at = Column(DateTime)
+    id = Column(Integer, primary_key=True)
 
 
 Base.metadata.create_all(engine)
@@ -42,7 +44,7 @@ Session = sessionmaker(bind=engine)
 @app.route("/join", methods=["POST"])
 def join_player():
     """
-    Добавление нового игрока в игру со случайными начальными координатами.
+    Добавление игрока в игру со случайными начальными координатами.
 
     :return: JSON-ответ об успешном добавлении игрока.
     """
@@ -50,18 +52,21 @@ def join_player():
     data = request.json
     username = data["username"]
     session = Session()
+    existing_player = session.query(Player).filter_by(username=username).first()
+    if existing_player:
+        session.close()
+        return jsonify({"status": "player_already_exists"})
+
     player = Player(
         username=username,
         x=randint(MIN_X, MAX_X),
         y=randint(MIN_Y, MAX_Y),
         coins=0,
-        joined_at=datetime.datetime.now(),
+        joined_at=datetime.now(),
     )
-
     session.add(player)
     session.commit()
     session.close()
-
     return jsonify({"status": "player_added"})
 
 
@@ -75,13 +80,17 @@ def move_player():
     :return: Данные JSON о перемещении игрока.
     """
 
-    data = request.json
-    username = data["username"]
-    direction = data["direction"]
-    session = Session()
-    player = session.query(Player).filter_by(username=username).first()
+    data = request.get_json(force=True)
+    username = data.get("username")
+    direction = data.get("direction")
 
-    if player:
+    session = Session()
+
+    try:
+        player = session.query(Player).filter_by(username=username).first()
+        if not player:
+            return jsonify({"status": "not_found"}), 404
+
         if direction == "up" and player.y > 0:
             player.y -= 1
         elif direction == "down" and player.y < MAX_Y:
@@ -91,16 +100,23 @@ def move_player():
         elif direction == "right" and player.x < MAX_X:
             player.x += 1
 
-        session.commit()
-    session.close()
+        new_x = player.x
+        new_y = player.y
 
-    return jsonify({"status": "moved"})
+        session.commit()
+        return jsonify({"status": "moved", "new_x": new_x, "new_y": new_y})
+    except Exception as e:
+        session.rollback()
+        app.logger.exception("move error")
+        return jsonify({"status": "error", "message": str(e)}), 500
+    finally:
+        session.close()
 
 
 @app.route("/get_players_status", methods=["GET"])
 def get_players_status():
     """
-    Получения текущих статусов всех игроков: имя, позиции (x, y), кол-во монет.
+    Получение статистики всех игроков: имя, позиции (x, y), кол-во монет.
 
     :return: Данные в JSON о статусе всех игроков.
     """
@@ -154,16 +170,28 @@ def leaderboard():
     """
 
     session = Session()
-    players = session.query(Player).order_by(Player.coins.desc()).all()
+
+    players = (
+        session.query(
+            Player.username,
+            func.sum(Player.coins).label("total_coins"),
+            func.min(Player.joined_at).label("first_join"),
+        )
+        .group_by(Player.username)
+        .order_by(func.sum(Player.coins).desc())
+        .all()
+    )
+
     data = [
         {
             "username": player.username,
-            "coins": player.coins,
-            "time": (datetime.datetime.now() - player.joined_at).total_seconds(),
+            "coins": player.total_coins,
+            "time": (
+                datetime.now() - player.first_join
+            ).total_seconds(),  # Полные секунды!
         }
         for player in players
     ]
-
     session.close()
 
     return render_template("leaderboard.html", players=data)
