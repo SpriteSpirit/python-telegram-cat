@@ -19,7 +19,7 @@
     </tr>
     </thead>
     <tbody>
-    {% for p in players %}
+    {% for player in players %}
     <tr>
         <td>
             {% if loop.index == 1 %}
@@ -31,11 +31,11 @@
             {% endif %}
             {{ loop.index }}
         </td>
-        <td>{{ p.username }}</td>
-        <td>{{ p.coins }}</td>
+        <td>{{ player.username }}</td>
+        <td>{{ player.coins }}</td>
         <td class="time-cell">
-            {% set hours = (p.time / 3600)|int %}
-            {% set minutes = ((p.time % 3600) / 60)|int %}
+            {% set hours = (player.time / 3600)|int %}
+            {% set minutes = ((player.time % 3600) / 60)|int %}
             {{ "%02d:%02d"|format(hours, minutes) }}
         </td>
     </tr>
